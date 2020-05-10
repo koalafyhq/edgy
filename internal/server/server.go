@@ -10,6 +10,10 @@ import (
 	"github.com/koalafy/edgy/internal/proxy"
 )
 
+func healthcheck(w http.ResponseWriter, r *http.Request) {
+	w.Write([]byte("OK"))
+}
+
 // New is
 func New(cacheMananger *cachemanager.CacheManager) *http.ServeMux {
 	reqIDKey := "x-edgy-req-id"
@@ -20,6 +24,7 @@ func New(cacheMananger *cachemanager.CacheManager) *http.ServeMux {
 
 	via := os.Getenv("EDGY_REGION")
 
+	router.HandleFunc("/__healthcheckz", healthcheck)
 	router.Handle("/", headers.RequestID(reqIDKey, headers.PoweredBy(serverName, via, proxy)))
 
 	return router
