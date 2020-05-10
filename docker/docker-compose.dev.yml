@@ -2,7 +2,7 @@ version: '3'
 
 services:
   edgy:
-    image: koalafy/edgy:edge
+    image: quay.io/koalafy/edgy:edge
     depends_on:
       - 'redis'
       - 'minio'
