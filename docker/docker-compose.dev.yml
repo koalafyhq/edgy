@@ -1,6 +1,20 @@
 version: '3'
 
 services:
+  edgy:
+    image: koalafy/edgy:edge
+    depends_on:
+      - 'redis'
+      - 'minio'
+    volumes:
+      - ../certs:/app/certs
+    ports:
+      - 3000:3000
+    environment:
+      - REDIS_URI=redis:6379
+      - EDGY_REGION=dev-1
+      - S3_GATEWAY=minio
+
   minio:
     image: minio/minio
     volumes:
