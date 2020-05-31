@@ -1,96 +1,47 @@
 package proxy
 
 import (
-	"bufio"
 	"bytes"
 	"io/ioutil"
+	"log"
 	"net/http"
-	"net/http/httputil"
 	"os"
 
-	"github.com/koalafy/edgy/http/headers"
+	"github.com/koalafy/edgy/http/encoding"
 	"github.com/koalafy/edgy/internal/helpers"
-	"github.com/koalafy/edgy/internal/logger"
 )
 
-func (transport *Transporter) checkCachedResponse(endpoint string, path string) (bool, []byte) {
-	cacheKey := endpoint + path
-
-	transport.mu.RLock()
-	defer transport.mu.RUnlock()
-
-	cached, err := transport.cachemanager.Get(cacheKey)
-
-	if err != nil {
-		return false, nil
-	}
-
-	return true, cached
-}
-
 func (transport *Transporter) responseNotFound(res *http.Response, endpoint string, path string, content []byte) (*http.Response, error) {
-	cacheKey := endpoint + path
-
-	transport.mu.RLock()
-	defer transport.mu.RUnlock()
-
-	headers.Cleanup(res)
-
-	// add our header to track the cache ratio easier
-	// this header will be stored on cache
-	res.Header.Set("x-edgy-cache", "HIT")
-
 	res.StatusCode = 404
 	res.Body = ioutil.NopCloser(bytes.NewReader(content))
-
-	body, err := httputil.DumpResponse(res, true)
-
-	if err != nil {
-		logger.Error("", err, "proxy:DumpResponse")
-	}
-
-	if res.ContentLength < 10000000 && res.ContentLength > 0 {
-		transport.cachemanager.Set(cacheKey, body)
-
-		logger.CacheWithSize("ADDED", endpoint, path, res.ContentLength)
-	}
-
-	// add our header to track the cache ratio easier
-	// this header will be sent once to the client
-	res.Header.Set("x-edgy-cache", "MISS")
 
 	return res, nil
 }
 
-func (transport *Transporter) responseOK(endpoint string, path string, res *http.Response) (*http.Response, error) {
-	cacheKey := endpoint + path
-
-	transport.mu.Lock()
-	defer transport.mu.Unlock()
-
-	body, err := httputil.DumpResponse(res, true)
+func (transport *Transporter) responseOK(endpoint string, path string, req *http.Request, res *http.Response) (*http.Response, error) {
+	useBrotli := req.Header.Get("x-brotli")
+	body, err := ioutil.ReadAll(res.Body)
 
 	if err != nil {
-		logger.Error("", err, "proxy:DumpResponse")
+		return nil, err
 	}
 
-	// We don't want to store to the cache if payload > 10MB
-	// And we don't want to store empty response, right?
-	if res.ContentLength > 0 && res.ContentLength < 10000000 {
-		transport.cachemanager.Set(cacheKey, body)
+	if useBrotli == "true" {
+		buff := new(bytes.Buffer)
+		encoded := encoding.CompressToBrotli(body, buff)
 
-		logger.CacheWithSize("ADDED", endpoint, path, res.ContentLength)
+		if err := encoded.Close(); err != nil {
+			log.Printf("Error compressing content because %v", err)
+		} else {
+			compressedContent := buff.Bytes()
+			res.Header.Set("Content-encoding", "br")
+			res.Body = ioutil.NopCloser(bytes.NewReader(compressedContent))
+		}
+	} else {
+		res.Body = ioutil.NopCloser(bytes.NewReader(body))
 	}
-
-	// add our header to track the cache ratio easier
-	// this header will be sent once to the client
-	res.Header.Set("x-edgy-cache", "MISS")
 
 	return res, err
-}
-
-func (transport *Transporter) responseFromCache(buff *bytes.Buffer, request *http.Request) (*http.Response, error) {
-	return http.ReadResponse(bufio.NewReader(buff), request)
 }
 
 func (transport *Transporter) responseFromOrigin(path string, req *http.Request) (*http.Response, error) {
@@ -108,12 +59,9 @@ func (transport *Transporter) responseFromOrigin(path string, req *http.Request)
 
 	res, err := http.DefaultTransport.RoundTrip(req)
 
-	// remove unecessary headers
-	headers.Cleanup(res)
-
-	// add our header to track the cache ratio easier
-	// this header will be stored on cache
-	res.Header.Set("x-edgy-cache", "HIT")
+	if err != nil {
+		return nil, err
+	}
 
 	return res, err
 }
