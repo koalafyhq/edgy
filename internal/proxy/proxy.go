@@ -4,10 +4,9 @@ import (
 	"net/http"
 	"net/http/httputil"
 
-	"github.com/koalafy/edgy/http/headers"
 	"github.com/koalafy/edgy/internal/cachemanager"
 	"github.com/koalafy/edgy/internal/helpers"
-	"github.com/koalafy/edgy/internal/logger"
+	"github.com/rs/zerolog/log"
 )
 
 // Router is
@@ -22,9 +21,7 @@ func New(cacheManager *cachemanager.CacheManager) *Router {
 		return nil
 	}
 
-	transport := &Transporter{
-		cachemanager: cacheManager,
-	}
+	transport := &Transporter{}
 
 	router := &Router{
 		CacheManager: cacheManager,
@@ -42,16 +39,13 @@ func (router *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	path := r.URL.Path
 	host := r.Host
 
-	// we use reqID to track failed request
-	reqID, _ := headers.IDFromRequest(r)
-
 	endpoint, err := router.CacheManager.GetEndpoint(host)
 
 	// does current request host (endpoint) exist on our db?
 	// if not, return not found
 	if err != nil {
 		http.NotFound(w, r)
-		logger.Error(reqID.String(), err, host)
+		log.Error().Err(err).Msg("")
 
 		return
 	}

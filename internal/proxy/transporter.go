@@ -1,49 +1,27 @@
 package proxy
 
 import (
-	"bytes"
 	"io/ioutil"
 	"net/http"
-	"sync"
-	"time"
 
 	"github.com/koalafy/edgy/http/headers"
-	"github.com/koalafy/edgy/internal/cachemanager"
 	"github.com/koalafy/edgy/internal/helpers"
-	"github.com/koalafy/edgy/internal/logger"
+	"github.com/rs/zerolog/log"
 )
 
 // Transporter is
-type Transporter struct {
-	cachemanager *cachemanager.CacheManager
-	mu           sync.RWMutex
-}
+type Transporter struct{}
 
 // RoundTrip is
 func (transport *Transporter) RoundTrip(req *http.Request) (*http.Response, error) {
 	endpoint := GetEndpointCtx(req.Context())
 	path := req.URL.Path
 
-	// we use reqID to track failed request
-	reqID, _ := headers.IDFromRequest(req)
-
-	cached, content := transport.checkCachedResponse(endpoint, path)
-
-	if cached {
-		logger.Cache("HIT", endpoint, path)
-
-		body := bytes.NewBuffer(content)
-
-		return transport.responseFromCache(body, req)
-	}
-
-	start := time.Now()
 	res, err := transport.responseFromOrigin(path, req)
-	elapsed := time.Since(start)
 
 	// probably the request is cancelled
 	if err != nil {
-		logger.Error(reqID.String(), err, "proxy:"+path)
+		log.Error().Err(err).Msg("")
 
 		return nil, err
 	}
@@ -57,7 +35,7 @@ func (transport *Transporter) RoundTrip(req *http.Request) (*http.Response, erro
 		res, err = transport.responseFromOrigin(newpath, req)
 
 		if err != nil {
-			logger.Error(reqID.String(), err, "proxy:"+path)
+			log.Error().Err(err).Msg("")
 		}
 
 		defer res.Body.Close()
@@ -66,12 +44,15 @@ func (transport *Transporter) RoundTrip(req *http.Request) (*http.Response, erro
 			// probably this is a subpath! try another one, again?
 			// TODO(@faultable): handle trailing slash here
 			subpath := helpers.TrimRightPath(path)
-			subpath = path + "/index.html"
+
+			if path != "" {
+				subpath = path + "/index.html"
+			}
 
 			res, err = transport.responseFromOrigin(subpath, req)
 
 			if err != nil {
-				logger.Error(reqID.String(), err, "proxy:"+path)
+				log.Error().Err(err).Msg("")
 			}
 
 			defer res.Body.Close()
@@ -83,7 +64,7 @@ func (transport *Transporter) RoundTrip(req *http.Request) (*http.Response, erro
 				res, err = transport.responseFromOrigin(notFoundPath, req)
 
 				if err != nil {
-					logger.Error(reqID.String(), err, "proxy:"+path)
+					log.Error().Err(err).Msg("")
 				}
 
 				defer res.Body.Close()
@@ -91,17 +72,21 @@ func (transport *Transporter) RoundTrip(req *http.Request) (*http.Response, erro
 				custom404NotFound, err := ioutil.ReadAll(res.Body)
 
 				if err != nil {
-					logger.Error(reqID.String(), err, "proxy:"+path)
+					log.Error().Err(err).Msg("")
 				}
 
-				logger.CacheWithLatency("MISS", endpoint, path, elapsed)
-
+				headers.Cleanup(res)
 				return transport.responseNotFound(res, endpoint, path, custom404NotFound)
 			}
+
+			headers.Cleanup(res)
+			return transport.responseOK(endpoint, path, req, res)
 		}
+
+		headers.Cleanup(res)
+		return transport.responseOK(endpoint, path, req, res)
 	}
 
-	logger.CacheWithLatency("MISS", endpoint, path, elapsed)
-
-	return transport.responseOK(endpoint, path, res)
+	headers.Cleanup(res)
+	return transport.responseOK(endpoint, path, req, res)
 }
