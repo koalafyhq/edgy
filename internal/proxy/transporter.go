@@ -28,8 +28,19 @@ func (transport *Transporter) RoundTrip(req *http.Request) (*http.Response, erro
 
 	defer res.Body.Close()
 
-	if res.StatusCode > 400 || res.ContentLength == 0 {
-		// maybe this is routed via client-side, try another one?
+	// FIXME(@faultable)?: This is IPFS specific logic
+	// to determine the most CORRECT requested path
+	// probably myself in future should fix this?
+	getEtag := res.Header.Get("Etag")
+	isDirListing := "\"DirIndex"
+	checkEtag := ""
+
+	if len(getEtag) > 8 {
+		checkEtag = getEtag[:9]
+	}
+
+	if res.StatusCode > 400 || checkEtag == isDirListing {
+		// maybe this is (previously) routed via client-side, try another one?
 		// TODO(@faultable): handle what if this /favicon.ico for the shake of efficiency?
 		newpath := path + ".html"
 		res, err = transport.responseFromOrigin(newpath, req)
