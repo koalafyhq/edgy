@@ -41,6 +41,10 @@ func (transport *Transporter) responseOK(endpoint string, path string, req *http
 		res.Body = ioutil.NopCloser(bytes.NewReader(body))
 	}
 
+	// FIXME(@faultable): IPFS is return 301, so we force
+	// to return 200 to the client
+	res.StatusCode = 200
+
 	return res, err
 }
 
@@ -54,7 +58,7 @@ func (transport *Transporter) responseFromOrigin(path string, req *http.Request)
 
 	req.Host = req.URL.Host
 	req.URL.Host = s3Gateway
-	req.URL.Path = helpers.AddSlashEachString("edgy-bundles", endpoint) + helpers.DeterminePath(path)
+	req.URL.Path = helpers.AddSlashEachString("ipfs", endpoint) + helpers.DeterminePath(path)
 	req.URL.Scheme = "https"
 
 	res, err := http.DefaultTransport.RoundTrip(req)
