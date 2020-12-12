@@ -1,8 +1,14 @@
 package helpers
 
-import "strings"
+import (
+	"os"
+	"strings"
+)
 
-// DeterminePath is
+var GetIPFSGateway = func() string {
+	return os.Getenv("IPFS_GATEWAY")
+}
+
 var DeterminePath = func(path string) string {
 	if path == "/" {
 		return "/index.html"
@@ -11,17 +17,14 @@ var DeterminePath = func(path string) string {
 	return path
 }
 
-// CheckTrailingSpace is
 var CheckTrailingSpace = func(path string) bool {
 	return strings.HasSuffix(path, "/")
 }
 
-// TrimRightPath is
 var TrimRightPath = func(path string) string {
 	return strings.TrimRight(path, "/")
 }
 
-// AddSlashEachString is helper to add slash into each word
 var AddSlashEachString = func(s ...string) string {
 	var str strings.Builder
 
@@ -32,7 +35,6 @@ var AddSlashEachString = func(s ...string) string {
 	return str.String()
 }
 
-// GetBytes is a helper to convert `string` into `byte`
 var GetBytes = func(s string) (b []byte) {
 	return []byte(s)
 }

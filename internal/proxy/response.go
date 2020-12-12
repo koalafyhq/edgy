@@ -5,7 +5,6 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
-	"os"
 
 	"github.com/koalafy/edgy/http/encoding"
 	"github.com/koalafy/edgy/internal/helpers"
@@ -51,13 +50,12 @@ func (transport *Transporter) responseOK(endpoint string, path string, req *http
 func (transport *Transporter) responseFromOrigin(path string, req *http.Request) (*http.Response, error) {
 	endpoint := GetEndpointCtx(req.Context())
 
-	// TODO(@faultable): fix this
-	s3Gateway := os.Getenv("S3_GATEWAY")
+	IPFSGateway := helpers.GetIPFSGateway()
 
 	req.Header.Set("X-Forwarded-Host", req.Header.Get("Host"))
 
 	req.Host = req.URL.Host
-	req.URL.Host = s3Gateway
+	req.URL.Host = IPFSGateway
 	req.URL.Path = helpers.AddSlashEachString("ipfs", endpoint) + helpers.DeterminePath(path)
 	req.URL.Scheme = "https"
 

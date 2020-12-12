@@ -2,17 +2,14 @@ package proxy
 
 import (
 	"io/ioutil"
+	"log"
 	"net/http"
 
-	"github.com/koalafy/edgy/http/headers"
 	"github.com/koalafy/edgy/internal/helpers"
-	"github.com/rs/zerolog/log"
 )
 
-// Transporter is
 type Transporter struct{}
 
-// RoundTrip is
 func (transport *Transporter) RoundTrip(req *http.Request) (*http.Response, error) {
 	endpoint := GetEndpointCtx(req.Context())
 	path := req.URL.Path
@@ -21,7 +18,7 @@ func (transport *Transporter) RoundTrip(req *http.Request) (*http.Response, erro
 
 	// probably the request is cancelled
 	if err != nil {
-		log.Error().Err(err).Msg("")
+		log.Println(err)
 
 		return nil, err
 	}
@@ -31,6 +28,9 @@ func (transport *Transporter) RoundTrip(req *http.Request) (*http.Response, erro
 	// FIXME(@faultable)?: This is IPFS specific logic
 	// to determine the most CORRECT requested path
 	// probably myself in future should fix this?
+	//
+	// Myself in future (12/12/20): NO, I have no idea.
+	//
 	getEtag := res.Header.Get("Etag")
 	isDirListing := "\"DirIndex"
 	checkEtag := ""
@@ -39,23 +39,24 @@ func (transport *Transporter) RoundTrip(req *http.Request) (*http.Response, erro
 		checkEtag = getEtag[:9]
 	}
 
+	// This is a stupid hack like nginx try_files $uri $uri/ $uri.html
+	// but for reverse proxy and in stupid way
 	if res.StatusCode > 400 || checkEtag == isDirListing {
 		// maybe this is (previously) routed via client-side, try another one?
-		// TODO(@faultable): handle what if this /favicon.ico for the shake of efficiency?
+		// e.g: request: /about, upstream: /about.html
 		newpath := path + ".html"
 		res, err = transport.responseFromOrigin(newpath, req)
 
 		if err != nil {
-			log.Error().Err(err).Msg("")
+			log.Println(err)
 		}
 
 		defer res.Body.Close()
 
 		if res.StatusCode > 400 || res.ContentLength == 0 {
 			// probably this is a subpath! try another one, again?
-			// TODO(@faultable): handle trailing slash here
 			subpath := helpers.TrimRightPath(path)
-
+			// e.g: request: /about, upstream: /about/index.html
 			if path != "" {
 				subpath = path + "/index.html"
 			}
@@ -63,7 +64,7 @@ func (transport *Transporter) RoundTrip(req *http.Request) (*http.Response, erro
 			res, err = transport.responseFromOrigin(subpath, req)
 
 			if err != nil {
-				log.Error().Err(err).Msg("")
+				log.Println(err)
 			}
 
 			defer res.Body.Close()
@@ -75,7 +76,7 @@ func (transport *Transporter) RoundTrip(req *http.Request) (*http.Response, erro
 				res, err = transport.responseFromOrigin(notFoundPath, req)
 
 				if err != nil {
-					log.Error().Err(err).Msg("")
+					log.Println(err)
 				}
 
 				defer res.Body.Close()
@@ -83,21 +84,17 @@ func (transport *Transporter) RoundTrip(req *http.Request) (*http.Response, erro
 				custom404NotFound, err := ioutil.ReadAll(res.Body)
 
 				if err != nil {
-					log.Error().Err(err).Msg("")
+					log.Println(err)
 				}
 
-				headers.Cleanup(res)
 				return transport.responseNotFound(res, endpoint, path, custom404NotFound)
 			}
 
-			headers.Cleanup(res)
 			return transport.responseOK(endpoint, path, req, res)
 		}
 
-		headers.Cleanup(res)
 		return transport.responseOK(endpoint, path, req, res)
 	}
 
-	headers.Cleanup(res)
 	return transport.responseOK(endpoint, path, req, res)
 }

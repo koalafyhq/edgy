@@ -4,31 +4,20 @@ import (
 	"net/http"
 	"net/http/httputil"
 
-	"github.com/koalafy/edgy/internal/cachemanager"
 	"github.com/koalafy/edgy/internal/helpers"
-	"github.com/rs/zerolog/log"
 )
 
-// Router is
 type Router struct {
-	Proxy        *httputil.ReverseProxy
-	CacheManager *cachemanager.CacheManager
+	Proxy *httputil.ReverseProxy
 }
 
-// New is
-func New(cacheManager *cachemanager.CacheManager) *Router {
-	modifyResponse := func(res *http.Response) (err error) {
-		return nil
-	}
-
+func New() *Router {
 	transport := &Transporter{}
 
 	router := &Router{
-		CacheManager: cacheManager,
 		Proxy: &httputil.ReverseProxy{
-			Transport:      transport,
-			ModifyResponse: modifyResponse,
-			Director:       func(req *http.Request) {},
+			Transport: transport,
+			Director:  func(req *http.Request) {},
 		},
 	}
 
@@ -37,32 +26,28 @@ func New(cacheManager *cachemanager.CacheManager) *Router {
 
 func (router *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	path := r.URL.Path
-	host := r.Host
 
-	endpoint, err := router.CacheManager.GetEndpoint(host)
+	endpoint := r.Header.Get("X-IPFS-PATH")
+	endpointCtx := SetEndpointCtx(r.Context(), string(endpoint))
 
-	// does current request host (endpoint) exist on our db?
-	// if not, return not found
-	if err != nil {
+	// someone is bypassed the edge!
+	if endpoint == "" {
 		http.NotFound(w, r)
-		log.Error().Err(err).Msg("")
 
 		return
 	}
 
-	endpointCtx := SetEndpointCtx(r.Context(), string(endpoint))
-
+	// only server GET method, who use another http verb for static site, anyways?
 	if r.Method == "GET" {
 		// check trailing slash
 		l := len(path) - 1
 
 		// if any, remove the trailing slash
-		// by redirect it
+		// by redirect it since we never want to access as a directory
 		if l > 0 && helpers.CheckTrailingSpace(path) {
 			path = path[:l]
 			uri := path
 
-			// TODO(@faultable): handle request cancellation
 			http.Redirect(w, r, uri, http.StatusMovedPermanently)
 
 			return
