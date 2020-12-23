@@ -51,13 +51,18 @@ func (transport *Transporter) responseFromOrigin(path string, req *http.Request)
 	endpoint := GetEndpointCtx(req.Context())
 
 	IPFSGateway := helpers.GetIPFSGateway()
+	urlScheme := req.Header.Get("X-URL-Scheme")
+
+	if urlScheme == "" {
+		urlScheme = "http"
+	}
 
 	req.Header.Set("X-Forwarded-Host", req.Header.Get("Host"))
 
 	req.Host = req.URL.Host
 	req.URL.Host = IPFSGateway
 	req.URL.Path = helpers.AddSlashEachString("ipfs", endpoint) + helpers.DeterminePath(path)
-	req.URL.Scheme = "https"
+	req.URL.Scheme = urlScheme
 
 	res, err := http.DefaultTransport.RoundTrip(req)
 
